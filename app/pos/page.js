@@ -39,12 +39,19 @@ export default function PosTerminal() {
               .eq('qr_code', targetId)
               .single()
               .then(({ data, error }) => {
-                if (error || !data) {
-                  setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK VALID` });
+                // DIAGNOSTIK UNTUK SCANNER
+                if (error) {
+                  setUiMessage({ type: 'error', text: `DB ERROR [${error.code}]: ${error.message}` });
                   setTimeout(() => {
                     setUiMessage({ type: '', text: '' });
                     html5QrCode.resume(); 
-                  }, 2000);
+                  }, 5000);
+                } else if (!data) {
+                  setUiMessage({ type: 'error', text: `DATA KOSONG: ID [${targetId}] tidak ada di tabel` });
+                  setTimeout(() => {
+                    setUiMessage({ type: '', text: '' });
+                    html5QrCode.resume(); 
+                  }, 3000);
                 } else {
                   setScannedId(targetId);
                   setUiMessage({ type: '', text: '' });
@@ -64,12 +71,12 @@ export default function PosTerminal() {
     };
   }, [scannedId]);
 
-  // PELACAK DIAGNOSTIK KONEKSI SUPABASE
+  // DIAGNOSTIK UNTUK INPUT MANUAL
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (manualInput.trim()) {
       setIsProcessing(true);
-      setUiMessage({ type: 'loading', text: 'MENGHUBUNGI DATABASE...' });
+      setUiMessage({ type: 'loading', text: 'INVESTIGASI DATABASE...' });
       const targetId = manualInput.trim().toUpperCase();
       
       try {
@@ -80,21 +87,23 @@ export default function PosTerminal() {
           .single();
 
         if (error) {
-          // MEMBONGKAR ALASAN ASLI SUPABASE MENOLAK
-          setUiMessage({ type: 'error', text: `DB ERROR: ${error.message} (Code: ${error.code})` });
+          // BONGKAR SEMUA ISI ERROR DARI SUPABASE
+          setUiMessage({ 
+            type: 'error', 
+            text: `SUPABASE ERROR CODE [${error.code}]: ${error.message}` 
+          });
         } else if (!data) {
-          setUiMessage({ type: 'error', text: `DATA KOSONG: Supabase mengembalikan hasil 0 baris untuk ${targetId}` });
+          setUiMessage({ type: 'error', text: `SUPABASE MENJAWAB: Tabel ditemukan, tapi ID [${targetId}] tidak ada.` });
         } else {
           setScannedId(targetId);
           setUiMessage({ type: '', text: '' });
         }
       } catch (err) {
-        // MUNCUL JIKA KUNCI NETLIFY KOSONG / KONEKSI PUTUS
-        setUiMessage({ type: 'error', text: `KONEKSI GAGAL: ${err.message}` });
+        setUiMessage({ type: 'error', text: `NETWORK FATAL: ${err.message}` });
       }
 
       setIsProcessing(false);
-      setTimeout(() => setUiMessage({ type: '', text: '' }), 5000); // Tahan error 5 detik
+      setTimeout(() => setUiMessage({ type: '', text: '' }), 10000); // Tahan 10 detik biar lu sempat baca
       setManualInput('');
     }
   };
@@ -111,7 +120,7 @@ export default function PosTerminal() {
         .eq('qr_code', scannedId)
         .single();
 
-      if (fetchError) throw new Error("Gagal membaca data dari server.");
+      if (fetchError) throw new Error(`TRANSACTION DB ERROR: ${fetchError.message}`);
 
       const currentBalance = ranger.balance || 0;
       const nominal = Number(amount);
@@ -126,7 +135,7 @@ export default function PosTerminal() {
         .update({ balance: newBalance })
         .eq('qr_code', scannedId);
 
-      if (updateError) throw new Error("Sistem gagal memotong saldo.");
+      if (updateError) throw new Error(`UPDATE DB ERROR: ${updateError.message}`);
 
       setUiMessage({ type: 'success', text: `TRANSAKSI BERHASIL! SISA SALDO: Rp${newBalance.toLocaleString()}` });
       
@@ -138,7 +147,7 @@ export default function PosTerminal() {
 
     } catch (err) {
       setUiMessage({ type: 'error', text: err.message });
-      setTimeout(() => setUiMessage({ type: '', text: '' }), 3000);
+      setTimeout(() => setUiMessage({ type: '', text: '' }), 5000);
     } finally {
       setIsProcessing(false);
     }
@@ -163,7 +172,7 @@ export default function PosTerminal() {
 
       <div className="max-w-md mx-auto">
         {uiMessage.text && (
-          <div className={`mb-6 p-4 rounded-xl border text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg animate-in fade-in slide-in-from-top-2 ${
+          <div className={`mb-6 p-4 rounded-xl border text-center text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg animate-in fade-in slide-in-from-top-2 ${
             uiMessage.type === 'error' ? 'bg-rose-500/10 border-rose-500 text-rose-500' :
             uiMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' :
             'bg-cyan-500/10 border-cyan-500 text-cyan-500 animate-pulse'
