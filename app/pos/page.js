@@ -40,7 +40,7 @@ export default function PosTerminal() {
             // CEK DATABASE SUPABASE
             supabase
               .from('rangers')
-              .select('qr_id')
+              .select('qr_code')
               .eq('qr_id', targetId)
               .single()
               .then(({ data, error }) => {
