@@ -2,25 +2,22 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { passcode } = await request.json();
-    
-    // Pastikan ini matching dengan .env.local lu
-    const adminPin = process.env.ADMIN_PIN;
-    const posPin = process.env.POS_PIN;
+    const { username, password } = await request.json();
+    const users = [
+      { user: process.env.ADMIN_USER, pass: process.env.ADMIN_PASS, id: process.env.ADMIN_UUID, role: 'admin' },
+      { user: process.env.POS1_USER, pass: process.env.POS1_PASS, id: process.env.POS1_UUID, role: 'pos' },
+      { user: process.env.POS2_USER, pass: process.env.POS2_PASS, id: process.env.POS2_UUID, role: 'pos' },
+    ];
 
-    let role = '';
-    if (passcode === adminPin) {
-      role = 'admin';
-    } else if (passcode === posPin) {
-      role = 'pos';
-    } else {
-      return NextResponse.json({ error: 'KODE AKSES DITOLAK.' }, { status: 401 });
+    const auth = users.find(u => u.user === username && u.pass === password);
+
+    if (auth) {
+      const res = NextResponse.json({ success: true });
+      // Gunakan sameSite: 'lax' agar cookie aman tapi tetap bisa dibaca antar route
+      res.cookies.set('user_id', auth.id, { path: '/', httpOnly: true, sameSite: 'lax' });
+      res.cookies.set('user_name', auth.user, { path: '/', httpOnly: true, sameSite: 'lax' });
+      return res;
     }
-
-    // Hanya kirim JSON, tidak perlu set cookie
-    return NextResponse.json({ success: true, role });
-
-  } catch (error) {
-    return NextResponse.json({ error: 'Kesalahan Server Internal.' }, { status: 500 });
-  }
+    return NextResponse.json({ error: 'DENIED' }, { status: 401 });
+  } catch (err) { return NextResponse.json({ error: 'ERROR' }, { status: 500 }); }
 }
