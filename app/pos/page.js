@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2 } from 'lucide-react';
+import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2, User } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // INISIALISASI KONEKSI DATABASE
@@ -11,6 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function PosTerminal() {
   const [scannedId, setScannedId] = useState('');
+  const [scannedName, setScannedName] = useState('');
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState('charge'); 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -33,10 +34,9 @@ export default function PosTerminal() {
             
             const targetId = decodedText.toUpperCase();
 
-            // PAKAI .ilike AGAR KEBAL HURUF BESAR/KECIL
             supabase
               .from('rangers')
-              .select('qr_code')
+              .select('qr_code, name') 
               .ilike('qr_code', targetId) 
               .limit(1) 
               .then(({ data, error }) => {
@@ -47,8 +47,8 @@ export default function PosTerminal() {
                   setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK DITEMUKAN` });
                   setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 3000);
                 } else {
-                  // Simpan casing asli dari database
                   setScannedId(data[0].qr_code); 
+                  setScannedName(data[0].name || 'UNKNOWN RANGER'); 
                   setUiMessage({ type: '', text: '' });
                   html5QrCode.stop().catch(console.error);
                 }
@@ -77,17 +77,17 @@ export default function PosTerminal() {
       try {
         const { data, error } = await supabase
           .from('rangers')
-          .select('qr_code')
-          .ilike('qr_code', targetId) // PAKAI .ilike AGAR KEBAL HURUF BESAR/KECIL
+          .select('qr_code, name')
+          .ilike('qr_code', targetId)
           .limit(1); 
 
         if (error) {
           setUiMessage({ type: 'error', text: `SUPABASE ERROR: ${error.message}` });
         } else if (!data || data.length === 0) {
-          setUiMessage({ type: 'error', text: `TOLAK: ID [${targetId}] tidak ditemukan di database.` });
+          setUiMessage({ type: 'error', text: `TOLAK: ID [${targetId}] tidak ditemukan.` });
         } else {
-          // Simpan casing asli dari database
           setScannedId(data[0].qr_code);
+          setScannedName(data[0].name || 'UNKNOWN RANGER');
           setUiMessage({ type: '', text: '' });
         }
       } catch (err) {
@@ -106,34 +106,53 @@ export default function PosTerminal() {
     setUiMessage({ type: 'loading', text: 'EXECUTING TRANSACTION...' });
 
     try {
+      // 1. CEK SALDO SEKALIGUS AMBIL UUID (id)
       const { data, error: fetchError } = await supabase
         .from('rangers')
-        .select('balance')
-        .ilike('qr_code', scannedId) // PAKAI .ilike
+        .select('id, balance') // WAJIB AMBIL 'id' UNTUK MASTERLOG
+        .ilike('qr_code', scannedId)
         .limit(1); 
 
       if (fetchError) throw new Error(`TRANSACTION DB ERROR: ${fetchError.message}`);
-      if (!data || data.length === 0) throw new Error("Akses data saldo gagal.");
+      if (!data || data.length === 0) throw new Error("Akses data gagal.");
 
+      const rangerUuid = data[0].id; // UUID aslinya
       const currentBalance = data[0].balance || 0;
       const nominal = Number(amount);
       const newBalance = transactionType === 'topup' ? currentBalance + nominal : currentBalance - nominal;
 
-      if (newBalance < 0) {
-        throw new Error("SALDO TIDAK MENCUKUPI!");
-      }
+      if (newBalance < 0) throw new Error("SALDO TIDAK MENCUKUPI!");
 
+      // 2. UPDATE SALDO RANGERS
       const { error: updateError } = await supabase
         .from('rangers')
         .update({ balance: newBalance })
-        .ilike('qr_code', scannedId); // PAKAI .ilike
+        .eq('id', rangerUuid); // Eksekusi langsung ke UUID biar lebih presisi
 
       if (updateError) throw new Error(`UPDATE DB ERROR: ${updateError.message}`);
 
+      // 3. INJEKSI PRESISI KE MASTERLOG
+      // Mengubah angka menjadi negatif jika Charge, positif jika TopUp
+      const logAmount = transactionType === 'charge' ? -Math.abs(nominal) : Math.abs(nominal);
+
+      const { error: logError } = await supabase
+        .from('masterlog')
+        .insert([{ 
+          to_id: rangerUuid, 
+          amount: logAmount 
+        }]);
+
+      if (logError) {
+        // Jika gagal insert log, beri warning di console, tapi transaksi saldo tetap dianggap berhasil
+        console.error("GAGAL INJEKSI MASTERLOG:", logError.message);
+      }
+
       setUiMessage({ type: 'success', text: `TRANSAKSI BERHASIL! SISA SALDO: Rp${newBalance.toLocaleString()}` });
       
+      // RESET
       setTimeout(() => {
         setScannedId('');
+        setScannedName('');
         setAmount('');
         setUiMessage({ type: '', text: '' });
       }, 3000);
@@ -213,13 +232,19 @@ export default function PosTerminal() {
           </div>
         ) : (
           <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 shadow-xl">
-            <div className="flex justify-between items-center bg-black/40 p-4 rounded-2xl mb-6 border border-slate-800">
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Target ID</p>
-                <p className="font-mono text-cyan-500 font-bold text-lg">{scannedId}</p>
+            <div className="flex justify-between items-center bg-black/40 p-5 rounded-2xl mb-6 border border-slate-800">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-800 p-3 rounded-full text-cyan-500">
+                  <User size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Target Identified</p>
+                  <p className="font-sans font-black text-white text-lg uppercase tracking-wider">{scannedName}</p>
+                  <p className="font-mono text-cyan-500 font-bold text-xs mt-1">{scannedId}</p>
+                </div>
               </div>
               <button 
-                onClick={() => setScannedId('')}
+                onClick={() => { setScannedId(''); setScannedName(''); }}
                 className="text-slate-500 hover:text-rose-500 transition-colors"
               >
                 <XCircle size={28} />
