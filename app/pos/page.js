@@ -5,7 +5,6 @@ import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Load
 import { createClient } from '@supabase/supabase-js';
 
 // INISIALISASI KONEKSI DATABASE
-// Pastikan NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY sudah ada di .env / Netlify
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -16,8 +15,6 @@ export default function PosTerminal() {
   const [transactionType, setTransactionType] = useState('charge'); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualInput, setManualInput] = useState('');
-  
-  // State untuk mengganti alert bawaan browser
   const [uiMessage, setUiMessage] = useState({ type: '', text: '' }); 
 
   useEffect(() => {
@@ -30,29 +27,26 @@ export default function PosTerminal() {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          // Hanya proses jika optik sedang dalam mode scanning aktif
           if (html5QrCode.getState() === 2) { 
-            html5QrCode.pause(); // Hentikan optik sementara agar tidak spam database
+            html5QrCode.pause(); 
             setUiMessage({ type: 'loading', text: 'VERIFYING ID...' });
             
             const targetId = decodedText.toUpperCase();
 
-            // CEK DATABASE SUPABASE
+            // CEK DATABASE (SUDAH DIKALIBRASI KE qr_code)
             supabase
               .from('rangers')
               .select('qr_code')
-              .eq('qr_id', targetId)
+              .eq('qr_code', targetId)
               .single()
               .then(({ data, error }) => {
                 if (error || !data) {
-                  // JIKA ID TIDAK DITEMUKAN
                   setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK VALID` });
                   setTimeout(() => {
                     setUiMessage({ type: '', text: '' });
-                    html5QrCode.resume(); // Nyalakan kamera lagi setelah 2 detik
+                    html5QrCode.resume(); 
                   }, 2000);
                 } else {
-                  // JIKA ID VALID
                   setScannedId(targetId);
                   setUiMessage({ type: '', text: '' });
                   html5QrCode.stop().catch(console.error);
@@ -60,7 +54,7 @@ export default function PosTerminal() {
               });
           }
         },
-        () => {} // Abaikan warning visual dari library
+        () => {} 
       ).catch((err) => console.error("Optic Init Error:", err));
     }
 
@@ -78,11 +72,11 @@ export default function PosTerminal() {
       setUiMessage({ type: 'loading', text: 'VERIFYING ID...' });
       const targetId = manualInput.trim().toUpperCase();
       
-      // CEK DATABASE UNTUK INPUT MANUAL
+      // CEK DATABASE MANUAL (SUDAH DIKALIBRASI KE qr_code)
       const { data, error } = await supabase
         .from('rangers')
-        .select('qr_id')
-        .eq('qr_id', targetId)
+        .select('qr_code')
+        .eq('qr_code', targetId)
         .single();
 
       if (error || !data) {
@@ -103,11 +97,11 @@ export default function PosTerminal() {
     setUiMessage({ type: 'loading', text: 'EXECUTING TRANSACTION...' });
 
     try {
-      // 1. Cek saldo saat ini
+      // 1. Cek saldo saat ini (SUDAH DIKALIBRASI KE qr_code)
       const { data: ranger, error: fetchError } = await supabase
         .from('rangers')
         .select('balance')
-        .eq('qr_id', scannedId)
+        .eq('qr_code', scannedId)
         .single();
 
       if (fetchError) throw new Error("Gagal membaca data dari server.");
@@ -116,23 +110,20 @@ export default function PosTerminal() {
       const nominal = Number(amount);
       const newBalance = transactionType === 'topup' ? currentBalance + nominal : currentBalance - nominal;
 
-      // 2. Proteksi saldo minus
       if (newBalance < 0) {
         throw new Error("SALDO TIDAK MENCUKUPI!");
       }
 
-      // 3. Update saldo ke database
+      // 3. Update saldo ke database (SUDAH DIKALIBRASI KE qr_code)
       const { error: updateError } = await supabase
         .from('rangers')
         .update({ balance: newBalance })
-        .eq('qr_id', scannedId);
+        .eq('qr_code', scannedId);
 
       if (updateError) throw new Error("Sistem gagal memotong saldo.");
 
-      // 4. Sukses
       setUiMessage({ type: 'success', text: `TRANSAKSI BERHASIL! SISA SALDO: Rp${newBalance.toLocaleString()}` });
       
-      // Reset terminal setelah 3 detik
       setTimeout(() => {
         setScannedId('');
         setAmount('');
@@ -165,7 +156,6 @@ export default function PosTerminal() {
       </div>
 
       <div className="max-w-md mx-auto">
-        {/* PANEL NOTIFIKASI UNIVERSAL (Menggantikan Alert) */}
         {uiMessage.text && (
           <div className={`mb-6 p-4 rounded-xl border text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg animate-in fade-in slide-in-from-top-2 ${
             uiMessage.type === 'error' ? 'bg-rose-500/10 border-rose-500 text-rose-500' :
