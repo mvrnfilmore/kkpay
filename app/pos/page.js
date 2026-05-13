@@ -1,7 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard } from 'lucide-react';
+import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+// INISIALISASI KONEKSI DATABASE
+// Pastikan NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY sudah ada di .env / Netlify
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function PosTerminal() {
   const [scannedId, setScannedId] = useState('');
@@ -9,8 +16,10 @@ export default function PosTerminal() {
   const [transactionType, setTransactionType] = useState('charge'); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  
+  // State untuk mengganti alert bawaan browser
+  const [uiMessage, setUiMessage] = useState({ type: '', text: '' }); 
 
-  // INISIALISASI ENGINE HTML5-QRCODE (Tahan Banting untuk iOS)
   useEffect(() => {
     let html5QrCode;
 
@@ -18,26 +27,43 @@ export default function PosTerminal() {
       html5QrCode = new Html5Qrcode("tactical-scanner");
       
       html5QrCode.start(
-        { facingMode: "environment" }, // Paksa kamera belakang
-        {
-          fps: 10,    // Frame per detik, jangan terlalu tinggi biar HP gak panas
-          qrbox: { width: 250, height: 250 } // Area fokus scanning
-        },
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          // JIKA BERHASIL SCAN
-          setScannedId(decodedText.toUpperCase());
-          html5QrCode.stop().catch(console.error); // Matikan kamera setelah dapat data
+          // Hanya proses jika optik sedang dalam mode scanning aktif
+          if (html5QrCode.getState() === 2) { 
+            html5QrCode.pause(); // Hentikan optik sementara agar tidak spam database
+            setUiMessage({ type: 'loading', text: 'VERIFYING ID...' });
+            
+            const targetId = decodedText.toUpperCase();
+
+            // CEK DATABASE SUPABASE
+            supabase
+              .from('rangers')
+              .select('qr_id')
+              .eq('qr_id', targetId)
+              .single()
+              .then(({ data, error }) => {
+                if (error || !data) {
+                  // JIKA ID TIDAK DITEMUKAN
+                  setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK VALID` });
+                  setTimeout(() => {
+                    setUiMessage({ type: '', text: '' });
+                    html5QrCode.resume(); // Nyalakan kamera lagi setelah 2 detik
+                  }, 2000);
+                } else {
+                  // JIKA ID VALID
+                  setScannedId(targetId);
+                  setUiMessage({ type: '', text: '' });
+                  html5QrCode.stop().catch(console.error);
+                }
+              });
+          }
         },
-        (errorMessage) => {
-          // Abaikan error di sini, karena library ini akan terus melempar error 
-          // setiap milidetik selama dia tidak melihat pola QR di depannya.
-        }
-      ).catch((err) => {
-        console.error("Gagal memulai kamera:", err);
-      });
+        () => {} // Abaikan warning visual dari library
+      ).catch((err) => console.error("Optic Init Error:", err));
     }
 
-    // CLEANUP: Pastikan kamera mati saat komponen dibongkar
     return () => {
       if (html5QrCode && html5QrCode.isScanning) {
         html5QrCode.stop().catch(console.error);
@@ -45,10 +71,28 @@ export default function PosTerminal() {
     };
   }, [scannedId]);
 
-  const handleManualSubmit = (e) => {
+  const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (manualInput.trim()) {
-      setScannedId(manualInput.trim().toUpperCase());
+      setIsProcessing(true);
+      setUiMessage({ type: 'loading', text: 'VERIFYING ID...' });
+      const targetId = manualInput.trim().toUpperCase();
+      
+      // CEK DATABASE UNTUK INPUT MANUAL
+      const { data, error } = await supabase
+        .from('rangers')
+        .select('qr_id')
+        .eq('qr_id', targetId)
+        .single();
+
+      if (error || !data) {
+        setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK VALID` });
+        setTimeout(() => setUiMessage({ type: '', text: '' }), 3000);
+      } else {
+        setScannedId(targetId);
+        setUiMessage({ type: '', text: '' });
+      }
+      setIsProcessing(false);
       setManualInput('');
     }
   };
@@ -56,15 +100,51 @@ export default function PosTerminal() {
   const handleTransaction = async () => {
     if (!amount || isNaN(amount)) return;
     setIsProcessing(true);
+    setUiMessage({ type: 'loading', text: 'EXECUTING TRANSACTION...' });
 
-    // TODO: Titik injeksi database Supabase lu
-    console.log(`Executing ${transactionType} of ${amount} for ID: ${scannedId}`);
-    await new Promise(res => setTimeout(res, 1000));
-    alert(`TRANSACTION SUCCESS: ${transactionType.toUpperCase()} ${amount}`);
-    
-    setIsProcessing(false);
-    setScannedId('');
-    setAmount('');
+    try {
+      // 1. Cek saldo saat ini
+      const { data: ranger, error: fetchError } = await supabase
+        .from('rangers')
+        .select('balance')
+        .eq('qr_id', scannedId)
+        .single();
+
+      if (fetchError) throw new Error("Gagal membaca data dari server.");
+
+      const currentBalance = ranger.balance || 0;
+      const nominal = Number(amount);
+      const newBalance = transactionType === 'topup' ? currentBalance + nominal : currentBalance - nominal;
+
+      // 2. Proteksi saldo minus
+      if (newBalance < 0) {
+        throw new Error("SALDO TIDAK MENCUKUPI!");
+      }
+
+      // 3. Update saldo ke database
+      const { error: updateError } = await supabase
+        .from('rangers')
+        .update({ balance: newBalance })
+        .eq('qr_id', scannedId);
+
+      if (updateError) throw new Error("Sistem gagal memotong saldo.");
+
+      // 4. Sukses
+      setUiMessage({ type: 'success', text: `TRANSAKSI BERHASIL! SISA SALDO: Rp${newBalance.toLocaleString()}` });
+      
+      // Reset terminal setelah 3 detik
+      setTimeout(() => {
+        setScannedId('');
+        setAmount('');
+        setUiMessage({ type: '', text: '' });
+      }, 3000);
+
+    } catch (err) {
+      setUiMessage({ type: 'error', text: err.message });
+      setTimeout(() => setUiMessage({ type: '', text: '' }), 3000);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleLogout = () => {
@@ -85,6 +165,18 @@ export default function PosTerminal() {
       </div>
 
       <div className="max-w-md mx-auto">
+        {/* PANEL NOTIFIKASI UNIVERSAL (Menggantikan Alert) */}
+        {uiMessage.text && (
+          <div className={`mb-6 p-4 rounded-xl border text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg animate-in fade-in slide-in-from-top-2 ${
+            uiMessage.type === 'error' ? 'bg-rose-500/10 border-rose-500 text-rose-500' :
+            uiMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' :
+            'bg-cyan-500/10 border-cyan-500 text-cyan-500 animate-pulse'
+          }`}>
+            {uiMessage.type === 'loading' && <Loader2 size={16} className="animate-spin" />}
+            {uiMessage.text}
+          </div>
+        )}
+
         {!scannedId ? (
           <div className="space-y-6">
             <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
@@ -93,12 +185,9 @@ export default function PosTerminal() {
                 <h2 className="text-sm font-bold tracking-widest uppercase">Auto-Scan QR</h2>
               </div>
               
-              {/* TARGET WADAH VIDEO KAMERA */}
-              <div className="rounded-2xl overflow-hidden border-2 border-cyan-500/30 relative bg-black w-full min-h-[300px] flex items-center justify-center">
-                {/* Engine akan merender video di dalam ID ini */}
+              <div className={`rounded-2xl overflow-hidden border-2 relative bg-black w-full min-h-[300px] flex items-center justify-center transition-all ${uiMessage.type === 'error' ? 'border-rose-500 shadow-[0_0_30px_rgba(225,29,72,0.3)]' : 'border-cyan-500/30'}`}>
                 <div id="tactical-scanner" className="w-full h-full"></div>
               </div>
-              <p className="text-center text-[10px] text-slate-500 mt-4 tracking-widest uppercase">Align QR Code within the frame</p>
             </div>
 
             <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 shadow-xl">
@@ -116,7 +205,7 @@ export default function PosTerminal() {
                 />
                 <button 
                   type="submit"
-                  disabled={!manualInput}
+                  disabled={!manualInput || isProcessing}
                   className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50 transition-all"
                 >
                   ENTER
