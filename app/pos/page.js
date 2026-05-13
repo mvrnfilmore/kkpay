@@ -4,7 +4,6 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
-// INISIALISASI KONEKSI DATABASE
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -37,21 +36,14 @@ export default function PosTerminal() {
               .from('rangers')
               .select('qr_code')
               .eq('qr_code', targetId)
-              .single()
+              .limit(1) // TAKTIK ANTI-PGRST116
               .then(({ data, error }) => {
-                // DIAGNOSTIK UNTUK SCANNER
                 if (error) {
-                  setUiMessage({ type: 'error', text: `DB ERROR [${error.code}]: ${error.message}` });
-                  setTimeout(() => {
-                    setUiMessage({ type: '', text: '' });
-                    html5QrCode.resume(); 
-                  }, 5000);
-                } else if (!data) {
-                  setUiMessage({ type: 'error', text: `DATA KOSONG: ID [${targetId}] tidak ada di tabel` });
-                  setTimeout(() => {
-                    setUiMessage({ type: '', text: '' });
-                    html5QrCode.resume(); 
-                  }, 3000);
+                  setUiMessage({ type: 'error', text: `DB ERROR: ${error.message}` });
+                  setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 3000);
+                } else if (!data || data.length === 0) {
+                  setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK DITEMUKAN / DIBLOKIR RLS` });
+                  setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 3000);
                 } else {
                   setScannedId(targetId);
                   setUiMessage({ type: '', text: '' });
@@ -71,7 +63,6 @@ export default function PosTerminal() {
     };
   }, [scannedId]);
 
-  // DIAGNOSTIK UNTUK INPUT MANUAL
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (manualInput.trim()) {
@@ -84,16 +75,12 @@ export default function PosTerminal() {
           .from('rangers')
           .select('qr_code')
           .eq('qr_code', targetId)
-          .single();
+          .limit(1); // TAKTIK ANTI-PGRST116
 
         if (error) {
-          // BONGKAR SEMUA ISI ERROR DARI SUPABASE
-          setUiMessage({ 
-            type: 'error', 
-            text: `SUPABASE ERROR CODE [${error.code}]: ${error.message}` 
-          });
-        } else if (!data) {
-          setUiMessage({ type: 'error', text: `SUPABASE MENJAWAB: Tabel ditemukan, tapi ID [${targetId}] tidak ada.` });
+          setUiMessage({ type: 'error', text: `SUPABASE ERROR: ${error.message}` });
+        } else if (!data || data.length === 0) {
+          setUiMessage({ type: 'error', text: `TOLAK: Tabel diakses, tapi ID [${targetId}] tidak ditemukan. Cek RLS SELECT!` });
         } else {
           setScannedId(targetId);
           setUiMessage({ type: '', text: '' });
@@ -103,7 +90,7 @@ export default function PosTerminal() {
       }
 
       setIsProcessing(false);
-      setTimeout(() => setUiMessage({ type: '', text: '' }), 10000); // Tahan 10 detik biar lu sempat baca
+      setTimeout(() => setUiMessage({ type: '', text: '' }), 5000);
       setManualInput('');
     }
   };
@@ -114,15 +101,16 @@ export default function PosTerminal() {
     setUiMessage({ type: 'loading', text: 'EXECUTING TRANSACTION...' });
 
     try {
-      const { data: ranger, error: fetchError } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('rangers')
         .select('balance')
         .eq('qr_code', scannedId)
-        .single();
+        .limit(1); // TAKTIK ANTI-PGRST116
 
       if (fetchError) throw new Error(`TRANSACTION DB ERROR: ${fetchError.message}`);
+      if (!data || data.length === 0) throw new Error("Akses data saldo digagalkan oleh RLS.");
 
-      const currentBalance = ranger.balance || 0;
+      const currentBalance = data[0].balance || 0;
       const nominal = Number(amount);
       const newBalance = transactionType === 'topup' ? currentBalance + nominal : currentBalance - nominal;
 
