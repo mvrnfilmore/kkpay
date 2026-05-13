@@ -4,6 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
+// INISIALISASI KONEKSI DATABASE
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -32,20 +33,22 @@ export default function PosTerminal() {
             
             const targetId = decodedText.toUpperCase();
 
+            // PAKAI .ilike AGAR KEBAL HURUF BESAR/KECIL
             supabase
               .from('rangers')
               .select('qr_code')
-              .ilike('qr_code', targetId)
-              .limit(1) // TAKTIK ANTI-PGRST116
+              .ilike('qr_code', targetId) 
+              .limit(1) 
               .then(({ data, error }) => {
                 if (error) {
                   setUiMessage({ type: 'error', text: `DB ERROR: ${error.message}` });
                   setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 3000);
                 } else if (!data || data.length === 0) {
-                  setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK DITEMUKAN / DIBLOKIR RLS` });
+                  setUiMessage({ type: 'error', text: `AKSES DITOLAK: ID [${targetId}] TIDAK DITEMUKAN` });
                   setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 3000);
                 } else {
-                  setScannedId(targetId);
+                  // Simpan casing asli dari database
+                  setScannedId(data[0].qr_code); 
                   setUiMessage({ type: '', text: '' });
                   html5QrCode.stop().catch(console.error);
                 }
@@ -68,21 +71,23 @@ export default function PosTerminal() {
     if (manualInput.trim()) {
       setIsProcessing(true);
       setUiMessage({ type: 'loading', text: 'INVESTIGASI DATABASE...' });
+      
       const targetId = manualInput.trim().toUpperCase();
       
       try {
         const { data, error } = await supabase
           .from('rangers')
           .select('qr_code')
-          .eq('qr_code', targetId)
-          .limit(1); // TAKTIK ANTI-PGRST116
+          .ilike('qr_code', targetId) // PAKAI .ilike AGAR KEBAL HURUF BESAR/KECIL
+          .limit(1); 
 
         if (error) {
           setUiMessage({ type: 'error', text: `SUPABASE ERROR: ${error.message}` });
         } else if (!data || data.length === 0) {
-          setUiMessage({ type: 'error', text: `TOLAK: Tabel diakses, tapi ID [${targetId}] tidak ditemukan. Cek RLS SELECT!` });
+          setUiMessage({ type: 'error', text: `TOLAK: ID [${targetId}] tidak ditemukan di database.` });
         } else {
-          setScannedId(targetId);
+          // Simpan casing asli dari database
+          setScannedId(data[0].qr_code);
           setUiMessage({ type: '', text: '' });
         }
       } catch (err) {
@@ -104,11 +109,11 @@ export default function PosTerminal() {
       const { data, error: fetchError } = await supabase
         .from('rangers')
         .select('balance')
-        .eq('qr_code', scannedId)
-        .limit(1); // TAKTIK ANTI-PGRST116
+        .ilike('qr_code', scannedId) // PAKAI .ilike
+        .limit(1); 
 
       if (fetchError) throw new Error(`TRANSACTION DB ERROR: ${fetchError.message}`);
-      if (!data || data.length === 0) throw new Error("Akses data saldo digagalkan oleh RLS.");
+      if (!data || data.length === 0) throw new Error("Akses data saldo gagal.");
 
       const currentBalance = data[0].balance || 0;
       const nominal = Number(amount);
@@ -121,7 +126,7 @@ export default function PosTerminal() {
       const { error: updateError } = await supabase
         .from('rangers')
         .update({ balance: newBalance })
-        .eq('qr_code', scannedId);
+        .ilike('qr_code', scannedId); // PAKAI .ilike
 
       if (updateError) throw new Error(`UPDATE DB ERROR: ${updateError.message}`);
 
