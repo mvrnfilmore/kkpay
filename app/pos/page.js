@@ -35,7 +35,7 @@ export default function PosTerminal() {
             supabase
               .from('rangers')
               .select('qr_code')
-              .eq('qr_code', targetId)
+              .ilike('qr_code', targetId)
               .limit(1) // TAKTIK ANTI-PGRST116
               .then(({ data, error }) => {
                 if (error) {
