@@ -107,7 +107,7 @@ export default function PosTerminal() {
 
       if (logError) console.error("LOG ERROR:", logError.message);
 
-      setUiMessage({ type: 'success', text: `BERHASIL! SISA SALDO: Rp${newBalance.toLocaleString()}` });
+      setUiMessage({ type: 'success', text: `BERHASIL! SISA SALDO: KKC${newBalance.toLocaleString()}` });
       setTimeout(() => { setScannedId(''); setScannedName(''); setAmount(''); setUiMessage({ type: '', text: '' }); }, 3000);
     } catch (err) {
       setUiMessage({ type: 'error', text: err.message });
@@ -173,7 +173,7 @@ export default function PosTerminal() {
               <button onClick={() => setTransactionType('charge')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'charge' ? 'bg-rose-500/10 border-rose-500 text-rose-500 shadow-lg shadow-rose-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowDownCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Charge</span></button>
               <button onClick={() => setTransactionType('topup')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'topup' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowUpCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Top Up</span></button>
             </div>
-            <div className="mb-6"><input type="number" placeholder="NOMINAL (Rp)..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-black/60 border border-slate-800 p-5 rounded-2xl text-center text-xl font-mono outline-none focus:border-cyan-500/50 text-white tracking-[0.2em] transition-all" /></div>
+            <div className="mb-6"><input type="number" placeholder="NOMINAL (KKC)..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-black/60 border border-slate-800 p-5 rounded-2xl text-center text-xl font-mono outline-none focus:border-cyan-500/50 text-white tracking-[0.2em] transition-all" /></div>
             <button onClick={handleTransaction} disabled={!amount || isProcessing} className={`w-full p-6 rounded-2xl text-[11px] font-black uppercase tracking-[0.25em] transition-all ${transactionType === 'charge' ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20'} disabled:opacity-30 disabled:scale-100 active:scale-95`}>{isProcessing ? 'Transmitting Data...' : 'Confirm Transaction'}</button>
           </div>
         )}

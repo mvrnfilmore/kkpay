@@ -111,7 +111,7 @@ export default function ParticipantLedger() {
           <p className="text-[9px] font-black tracking-[0.2em] uppercase text-slate-600 mb-2">Total Circulation</p>
           <div className="flex items-center justify-between text-emerald-400">
             <span className="text-2xl font-black italic italic">
-              Rp {participants.reduce((a,c) => a + (c.balance ?? 0), 0).toLocaleString('id-ID')}
+              KKC {participants.reduce((a,c) => a + (c.balance ?? 0), 0).toLocaleString('id-ID')}
             </span>
             <TrendingUp size={24} className="opacity-50" />
           </div>
@@ -164,7 +164,7 @@ export default function ParticipantLedger() {
                   <td className="p-6 font-mono text-[10px] text-cyan-500/70">{p.id}</td>
                   <td className="p-6 text-[11px] font-black text-white tracking-wider uppercase">{p.name}</td>
                   <td className="p-6 text-right text-[11px] font-black text-white italic italic">
-                    <span className="text-[9px] text-slate-700 mr-2 not-italic">Rp</span>
+                    <span className="text-[9px] text-slate-700 mr-2 not-italic">KKC</span>
                     {p.balance.toLocaleString('id-ID')}
                   </td>
                   <td className="p-6 text-center">

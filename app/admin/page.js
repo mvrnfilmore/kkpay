@@ -227,7 +227,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="text-right">
                     <p className={`text-[12px] font-black italic ${log.amount > 0 ? 'text-emerald-400' : log.amount < 0 ? 'text-rose-500' : 'text-amber-500'}`}>
-                      {log.amount > 0 ? '+' : ''}Rp {log.amount.toLocaleString('id-ID')}
+                      {log.amount > 0 ? '+' : ''}KKC {log.amount.toLocaleString('id-ID')}
                     </p>
                     <p className="text-[7px] text-slate-600 font-mono mt-1">{new Date(log.time).toLocaleTimeString()}</p>
                   </div>
@@ -317,7 +317,7 @@ export default function AdminDashboard() {
                               <p className="text-[8px] text-slate-600 font-mono italic mt-0.5">{p.id.toUpperCase()}</p>
                             </div>
                           </div>
-                          <span className="text-[10px] font-mono text-emerald-500/70 group-hover:text-emerald-400 transition-colors">Rp {p.balance.toLocaleString('id-ID')}</span>
+                          <span className="text-[10px] font-mono text-emerald-500/70 group-hover:text-emerald-400 transition-colors">KKC {p.balance.toLocaleString('id-ID')}</span>
                         </div>
                       ))}
                       
