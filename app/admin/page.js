@@ -332,7 +332,7 @@ export default function AdminDashboard() {
 
                 {/* AMOUNT */}
                 <div>
-                  <label className="text-[9px] font-black text-slate-500 uppercase ml-4 mb-4 block tracking-[0.3em] italic">Value Transmission (IDR)</label>
+                  <label className="text-[9px] font-black text-slate-500 uppercase ml-4 mb-4 block tracking-[0.3em] italic">Value Transmission (KKCoins)</label>
                   <input 
                     type="number" 
                     placeholder="0" 
