@@ -111,7 +111,7 @@ export default function ParticipantLedger() {
           <p className="text-[9px] font-black tracking-[0.2em] uppercase text-slate-600 mb-2">Total Circulation</p>
           <div className="flex items-center justify-between text-emerald-400">
             <span className="text-2xl font-black italic italic">
-              KKC {participants.reduce((a,c) => a + (c.balance ?? 0), 0).toLocaleString('id-ID')}
+              KKCoins  {participants.reduce((a,c) => a + (c.balance ?? 0), 0).toLocaleString('id-ID')}
             </span>
             <TrendingUp size={24} className="opacity-50" />
           </div>
