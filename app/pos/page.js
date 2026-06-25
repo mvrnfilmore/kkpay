@@ -35,8 +35,8 @@ export default function PosTerminal() {
         { facingMode: "environment" },
         { 
           fps: 20, 
-          // TAKTIK SNIPER: Kotak dikecilkan agar mesin 100% fokus ke area tengah
-          qrbox: { width: 150, height: 150 } 
+          // TAKTIK SUPER SNIPER: Kotak dipersempit ekstrem ke 100x100
+          qrbox: { width: 100, height: 100 } 
         },
         (decodedText) => {
           if (html5QrCode.getState() === 2) {
@@ -128,7 +128,7 @@ export default function PosTerminal() {
             <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-3 mb-6 justify-center text-cyan-500"><QrCode size={24} /><h2 className="text-sm font-black tracking-widest uppercase italic">Optical Scanner</h2></div>
               <div className={`rounded-2xl overflow-hidden border-2 relative bg-black w-full min-h-[300px] flex items-center justify-center transition-all ${uiMessage.type === 'error' ? 'border-rose-500' : 'border-cyan-500/20'}`}>
-                {/* UX HACK: OVERLAY PERINGATAN JARAK */}
+                {/* UX HACK: OVERLAY PERINGATAN JARAK TETAP ADA */}
                 <div className="absolute top-4 left-0 right-0 z-10 flex justify-center pointer-events-none"><div className="bg-rose-500/90 text-white px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse">⚠️ JAUHKAN HP 10-15 CM</div></div>
                 <div id="tactical-scanner" className="w-full h-full"></div>
               </div>
