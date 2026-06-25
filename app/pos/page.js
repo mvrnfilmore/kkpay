@@ -16,12 +16,14 @@ export default function PosTerminal() {
   const [transactionType, setTransactionType] = useState('charge');
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  const [searchResults, setSearchResults] = useState([]); // STATE BARU UNTUK DAFTAR KANDIDAT
   const [uiMessage, setUiMessage] = useState({ type: '', text: '' });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const resetTargetState = () => {
     setScannedId(''); setScannedName(''); setScannedUuid('');
     setAmount(''); setShowDeleteConfirm(false); setUiMessage({ type: '', text: '' });
+    setSearchResults([]); 
   };
 
   useEffect(() => {
@@ -33,11 +35,7 @@ export default function PosTerminal() {
       
       html5QrCode.start(
         { facingMode: "environment" },
-        { 
-          fps: 20, 
-          // TAKTIK SUPER SNIPER: Kotak dipersempit ekstrem ke 100x100
-          qrbox: { width: 100, height: 100 } 
-        },
+        { fps: 20, qrbox: { width: 100, height: 100 } },
         (decodedText) => {
           if (html5QrCode.getState() === 2) {
             html5QrCode.pause();
@@ -66,14 +64,33 @@ export default function PosTerminal() {
     e.preventDefault();
     if (manualInput.trim()) {
       setIsProcessing(true); setUiMessage({ type: 'loading', text: 'MENCARI DATA...' });
-      const targetId = manualInput.trim().toUpperCase();
+      const queryTerm = manualInput.trim();
       try {
-        const { data, error } = await supabase.from('rangers').select('id, qr_code, name').ilike('qr_code', targetId).limit(1);
-        if (error || !data || data.length === 0) throw new Error(`ID [${targetId}] tidak ditemukan.`);
-        setScannedUuid(data[0].id); setScannedId(data[0].qr_code);
-        setScannedName(data[0].name || 'UNKNOWN RANGER'); setUiMessage({ type: '', text: '' });
-      } catch (err) { setUiMessage({ type: 'error', text: err.message }); }
-      setIsProcessing(false); setTimeout(() => setUiMessage({ type: '', text: '' }), 3000); setManualInput('');
+        // DUAL-QUERY: Geledah kolom qr_code ATAU kolom name
+        const { data, error } = await supabase
+          .from('rangers')
+          .select('id, qr_code, name')
+          .or(`qr_code.ilike.%${queryTerm}%,name.ilike.%${queryTerm}%`)
+          .limit(5); // Batasi 5 hasil agar layar tidak penuh
+          
+        if (error || !data || data.length === 0) throw new Error(`[${queryTerm}] TIDAK DITEMUKAN.`);
+        
+        if (data.length === 1) {
+          // Kalau cuma ketemu 1, langsung lock target
+          setScannedUuid(data[0].id); setScannedId(data[0].qr_code);
+          setScannedName(data[0].name || 'UNKNOWN RANGER'); 
+          setUiMessage({ type: '', text: '' });
+          setManualInput(''); setSearchResults([]);
+        } else {
+          // Kalau lebih dari 1 (nama mirip), munculkan list
+          setSearchResults(data);
+          setUiMessage({ type: 'success', text: `DITEMUKAN ${data.length} KANDIDAT` });
+        }
+      } catch (err) { 
+        setUiMessage({ type: 'error', text: err.message }); 
+        setTimeout(() => setUiMessage({ type: '', text: '' }), 3000); 
+      }
+      setIsProcessing(false); 
     }
   };
 
@@ -128,17 +145,49 @@ export default function PosTerminal() {
             <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-3 mb-6 justify-center text-cyan-500"><QrCode size={24} /><h2 className="text-sm font-black tracking-widest uppercase italic">Optical Scanner</h2></div>
               <div className={`rounded-2xl overflow-hidden border-2 relative bg-black w-full min-h-[300px] flex items-center justify-center transition-all ${uiMessage.type === 'error' ? 'border-rose-500' : 'border-cyan-500/20'}`}>
-                {/* UX HACK: OVERLAY PERINGATAN JARAK TETAP ADA */}
                 <div className="absolute top-4 left-0 right-0 z-10 flex justify-center pointer-events-none"><div className="bg-rose-500/90 text-white px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse">⚠️ JAUHKAN HP 10-15 CM</div></div>
                 <div id="tactical-scanner" className="w-full h-full"></div>
               </div>
             </div>
-            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 shadow-xl">
+            
+            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 shadow-xl transition-all">
               <div className="flex items-center gap-3 mb-4 justify-center text-slate-500 uppercase"><Keyboard size={18} /><h2 className="text-[10px] font-black tracking-widest">Manual Override</h2></div>
               <form onSubmit={handleManualSubmit} className="flex gap-2">
-                <input type="text" placeholder="INPUT ID..." value={manualInput} onChange={(e) => setManualInput(e.target.value)} className="flex-1 bg-black/60 border border-slate-800 p-4 rounded-xl text-sm font-mono outline-none focus:border-cyan-500/50 text-white tracking-widest uppercase transition-all" />
-                <button type="submit" disabled={!manualInput || isProcessing} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-lg shadow-cyan-500/20">ENTER</button>
+                <input 
+                  type="text" 
+                  placeholder="ID ATAU NAMA..." 
+                  value={manualInput} 
+                  onChange={(e) => {
+                    setManualInput(e.target.value);
+                    if (e.target.value === '') setSearchResults([]); // Otomatis hapus list kalau input dikosongkan
+                  }} 
+                  className="flex-1 bg-black/60 border border-slate-800 p-4 rounded-xl text-sm font-mono outline-none focus:border-cyan-500/50 text-white tracking-widest uppercase transition-all" 
+                />
+                <button type="submit" disabled={!manualInput || isProcessing} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-lg shadow-cyan-500/20">CARI</button>
               </form>
+
+              {/* DAFTAR KANDIDAT MUNCUL DI SINI JIKA NAMA LEBIH DARI SATU */}
+              {searchResults.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+                  {searchResults.map((ranger) => (
+                    <button 
+                      key={ranger.id}
+                      onClick={() => {
+                        setScannedUuid(ranger.id); setScannedId(ranger.qr_code);
+                        setScannedName(ranger.name || 'UNKNOWN RANGER');
+                        setSearchResults([]); setManualInput(''); setUiMessage({ type: '', text: '' });
+                      }}
+                      className="flex justify-between items-center bg-black/40 border border-cyan-500/30 p-3 rounded-xl hover:bg-cyan-500/20 transition-all text-left group"
+                    >
+                      <div>
+                        <p className="text-xs font-black text-white uppercase group-hover:text-cyan-400 transition-colors">{ranger.name}</p>
+                        <p className="text-[10px] text-cyan-500/70 font-mono mt-0.5">{ranger.qr_code}</p>
+                      </div>
+                      <User size={16} className="text-cyan-500/50 group-hover:text-cyan-400 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : (
