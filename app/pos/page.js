@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'; // Import khusus untuk isolasi format
 import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2, User, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -27,11 +27,17 @@ export default function PosTerminal() {
   useEffect(() => {
     let html5QrCode;
     if (!scannedId) {
-      html5QrCode = new Html5Qrcode("tactical-scanner");
+      // TAKTIK ISOLASI: Paksa otak scanner 100% HANYA fokus mencari QR Code (sangat mempercepat deteksi)
+      html5QrCode = new Html5Qrcode("tactical-scanner", {
+        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+      });
+      
       html5QrCode.start(
-        // KITA CABUT PAKSAAN FOKUS. Pakai setting default yang 100% diterima semua HP.
         { facingMode: "environment" },
-        { fps: 15, qrbox: { width: 250, height: 250 } },
+        { 
+          fps: 20, // Dipercepat dari 15 ke 20 frame per detik biar peka terhadap gerakan tangan
+          qrbox: { width: 280, height: 280 } // Kotak diperbesar biar panitia nggak usah ngeker "pas banget"
+        },
         (decodedText) => {
           if (html5QrCode.getState() === 2) {
             html5QrCode.pause();
@@ -122,6 +128,7 @@ export default function PosTerminal() {
             <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-3 mb-6 justify-center text-cyan-500"><QrCode size={24} /><h2 className="text-sm font-black tracking-widest uppercase italic">Optical Scanner</h2></div>
               <div className={`rounded-2xl overflow-hidden border-2 relative bg-black w-full min-h-[300px] flex items-center justify-center transition-all ${uiMessage.type === 'error' ? 'border-rose-500' : 'border-cyan-500/20'}`}>
+                {/* UX HACK: OVERLAY PERINGATAN JARAK */}
                 <div className="absolute top-4 left-0 right-0 z-10 flex justify-center pointer-events-none"><div className="bg-rose-500/90 text-white px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse">⚠️ JAUHKAN HP 10-15 CM</div></div>
                 <div id="tactical-scanner" className="w-full h-full"></div>
               </div>
