@@ -34,12 +34,15 @@ export default function PosTerminal() {
     if (!scannedId) {
       html5QrCode = new Html5Qrcode("tactical-scanner");
       
-      // OPTIK DIKALIBRASI ULANG: Resolusi standar, tapi area scan diperkecil & dipercepat
       html5QrCode.start(
-        { facingMode: "environment" },
         { 
-          fps: 15, 
-          qrbox: { width: 150, height: 150 } 
+          facingMode: "environment",
+          // Paksa browser untuk terus mengunci fokus (jika didukung OS)
+          advanced: [{ focusMode: "continuous" }] 
+        },
+        { 
+          fps: 10, // Beri waktu algoritma untuk membaca piksel kecil
+          qrbox: { width: 250, height: 250 } // Area pencarian dilebarkan
         },
         (decodedText) => {
           if (html5QrCode.getState() === 2) { 
@@ -179,58 +182,4 @@ export default function PosTerminal() {
 
         {!scannedId ? (
           <div className="space-y-6">
-            <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-              <div className="flex items-center gap-3 mb-6 justify-center text-cyan-500"><QrCode size={24} /><h2 className="text-sm font-black tracking-widest uppercase italic">Optical Scanner</h2></div>
-              <div className={`rounded-2xl overflow-hidden border-2 relative bg-black w-full min-h-[300px] flex items-center justify-center transition-all ${uiMessage.type === 'error' ? 'border-rose-500' : 'border-cyan-500/20'}`}><div id="tactical-scanner" className="w-full h-full"></div></div>
-            </div>
-            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 shadow-xl">
-               <div className="flex items-center gap-3 mb-4 justify-center text-slate-500 uppercase"><Keyboard size={18} /><h2 className="text-[10px] font-black tracking-widest">Manual Override</h2></div>
-              <form onSubmit={handleManualSubmit} className="flex gap-2">
-                <input type="text" placeholder="INPUT ID..." value={manualInput} onChange={(e) => setManualInput(e.target.value)} className="flex-1 bg-black/60 border border-slate-800 p-4 rounded-xl text-sm font-mono outline-none focus:border-cyan-500/50 text-white tracking-widest uppercase transition-all" />
-                <button type="submit" disabled={!manualInput || isProcessing} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-lg shadow-cyan-500/20">ENTER</button>
-              </form>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 shadow-xl animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center bg-black/40 p-5 rounded-2xl mb-6 border border-slate-800 relative overflow-hidden group">
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="bg-cyan-500/10 p-3 rounded-full text-cyan-500 border border-cyan-500/20"><User size={24} /></div>
-                <div>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1 font-bold">Authorized Ranger</p>
-                  <p className="font-sans font-black text-white text-lg uppercase tracking-wider">{scannedName}</p>
-                  <p className="font-mono text-cyan-500 font-bold text-xs mt-1 bg-cyan-500/10 px-2 py-0.5 rounded inline-block">{scannedId}</p>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 relative z-10">
-                <button onClick={() => setShowDeleteConfirm(true)} disabled={isProcessing} className="text-slate-600 hover:text-rose-500 transition-all disabled:opacity-30"><Trash2 size={24} /></button>
-                <button onClick={resetTargetState} disabled={isProcessing} className="text-slate-600 hover:text-cyan-500 transition-all disabled:opacity-30"><XCircle size={28} /></button>
-              </div>
-            </div>
-
-            {/* PANEL KONFIRMASI ELIMINASI */}
-            {showDeleteConfirm ? (
-              <div className="bg-rose-500/10 border border-rose-500/30 p-5 rounded-2xl mb-6 animate-in fade-in slide-in-from-top-2 flex flex-col gap-4 shadow-[0_0_20px_rgba(225,29,72,0.1)]">
-                <p className="text-[10px] font-black text-rose-500 tracking-widest uppercase text-center">Konfirmasi: Hapus Ranger Ini?</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setShowDeleteConfirm(false)} disabled={isProcessing} className="flex-1 p-3 bg-black/40 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-400 hover:text-white transition-all disabled:opacity-30">BATAL</button>
-                  <button onClick={handleDeleteTarget} disabled={isProcessing} className="flex-1 p-3 bg-rose-600 hover:bg-rose-500 rounded-xl text-[10px] font-black text-white tracking-widest shadow-lg shadow-rose-600/20 transition-all disabled:opacity-30">EKSEKUSI</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <button onClick={() => setTransactionType('charge')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'charge' ? 'bg-rose-500/10 border-rose-500 text-rose-500 shadow-lg shadow-rose-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowDownCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Charge</span></button>
-                  <button onClick={() => setTransactionType('topup')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'topup' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowUpCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Top Up</span></button>
-                </div>
-                <div className="mb-6"><input type="number" placeholder="NOMINAL (KKC)..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-black/60 border border-slate-800 p-5 rounded-2xl text-center text-xl font-mono outline-none focus:border-cyan-500/50 text-white tracking-[0.2em] transition-all" /></div>
-                <button onClick={handleTransaction} disabled={!amount || isProcessing} className={`w-full p-6 rounded-2xl text-[11px] font-black uppercase tracking-[0.25em] transition-all ${transactionType === 'charge' ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20'} disabled:opacity-30 disabled:scale-100 active:scale-95`}>{isProcessing ? 'Transmitting Data...' : 'Confirm Transaction'}</button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+            <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-3xl p-
