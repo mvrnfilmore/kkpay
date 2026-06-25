@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'; // Import khusus untuk isolasi format
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'; 
 import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2, User, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -27,7 +27,6 @@ export default function PosTerminal() {
   useEffect(() => {
     let html5QrCode;
     if (!scannedId) {
-      // TAKTIK ISOLASI: Paksa otak scanner 100% HANYA fokus mencari QR Code (sangat mempercepat deteksi)
       html5QrCode = new Html5Qrcode("tactical-scanner", {
         formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
       });
@@ -35,8 +34,9 @@ export default function PosTerminal() {
       html5QrCode.start(
         { facingMode: "environment" },
         { 
-          fps: 20, // Dipercepat dari 15 ke 20 frame per detik biar peka terhadap gerakan tangan
-          qrbox: { width: 280, height: 280 } // Kotak diperbesar biar panitia nggak usah ngeker "pas banget"
+          fps: 20, 
+          // TAKTIK SNIPER: Kotak dikecilkan agar mesin 100% fokus ke area tengah
+          qrbox: { width: 150, height: 150 } 
         },
         (decodedText) => {
           if (html5QrCode.getState() === 2) {
