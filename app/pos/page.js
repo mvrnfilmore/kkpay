@@ -29,7 +29,8 @@ export default function PosTerminal() {
     if (!scannedId) {
       html5QrCode = new Html5Qrcode("tactical-scanner");
       html5QrCode.start(
-        { facingMode: "environment", advanced: [{ focusMode: "continuous" }] },
+        // KITA CABUT PAKSAAN FOKUS. Pakai setting default yang 100% diterima semua HP.
+        { facingMode: "environment" },
         { fps: 15, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
           if (html5QrCode.getState() === 2) {
