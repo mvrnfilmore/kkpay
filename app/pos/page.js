@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2, User } from 'lucide-react';
+import { QrCode, ArrowDownCircle, ArrowUpCircle, XCircle, LogOut, Keyboard, Loader2, User, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // INISIALISASI KONEKSI DATABASE
@@ -12,27 +12,49 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export default function PosTerminal() {
   const [scannedId, setScannedId] = useState('');
   const [scannedName, setScannedName] = useState('');
+  const [scannedUuid, setScannedUuid] = useState(''); // STATE UUID UNTUK MASTERLOG & DELETE
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState('charge'); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualInput, setManualInput] = useState('');
   const [uiMessage, setUiMessage] = useState({ type: '', text: '' }); 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const resetTargetState = () => {
+    setScannedId('');
+    setScannedName('');
+    setScannedUuid('');
+    setAmount('');
+    setShowDeleteConfirm(false);
+    setUiMessage({ type: '', text: '' });
+  };
 
   useEffect(() => {
     let html5QrCode;
     if (!scannedId) {
       html5QrCode = new Html5Qrcode("tactical-scanner");
+      
+      // KALIBRASI OPTIK UNTUK QR KECIL DI GELANG
       html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { 
+          facingMode: "environment",
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 }
+        },
+        { 
+          fps: 15, 
+          qrbox: { width: 150, height: 150 }, // Box dikecilin biar fokus ke tengah
+          aspectRatio: 1.0 
+        },
         (decodedText) => {
           if (html5QrCode.getState() === 2) { 
             html5QrCode.pause(); 
             setUiMessage({ type: 'loading', text: 'VERIFYING ID...' });
             const targetId = decodedText.toUpperCase();
+            
             supabase
               .from('rangers')
-              .select('qr_code, name') 
+              .select('id, qr_code, name') 
               .ilike('qr_code', targetId) 
               .limit(1) 
               .then(({ data, error }) => {
@@ -40,6 +62,7 @@ export default function PosTerminal() {
                   setUiMessage({ type: 'error', text: `ID [${targetId}] TIDAK VALID` });
                   setTimeout(() => { setUiMessage({ type: '', text: '' }); html5QrCode.resume(); }, 2000);
                 } else {
+                  setScannedUuid(data[0].id);
                   setScannedId(data[0].qr_code); 
                   setScannedName(data[0].name || 'UNKNOWN RANGER'); 
                   setUiMessage({ type: '', text: '' });
@@ -61,10 +84,11 @@ export default function PosTerminal() {
       setUiMessage({ type: 'loading', text: 'MENCARI DATA...' });
       const targetId = manualInput.trim().toUpperCase();
       try {
-        const { data, error } = await supabase.from('rangers').select('qr_code, name').ilike('qr_code', targetId).limit(1);
+        const { data, error } = await supabase.from('rangers').select('id, qr_code, name').ilike('qr_code', targetId).limit(1);
         if (error || !data || data.length === 0) {
           setUiMessage({ type: 'error', text: `ID [${targetId}] tidak ditemukan.` });
         } else {
+          setScannedUuid(data[0].id);
           setScannedId(data[0].qr_code);
           setScannedName(data[0].name || 'UNKNOWN RANGER');
           setUiMessage({ type: '', text: '' });
@@ -82,10 +106,9 @@ export default function PosTerminal() {
     setUiMessage({ type: 'loading', text: 'MEMPROSES TRANSAKSI...' });
 
     try {
-      const { data, error: fetchError } = await supabase.from('rangers').select('id, balance').ilike('qr_code', scannedId).limit(1); 
+      const { data, error: fetchError } = await supabase.from('rangers').select('balance').eq('id', scannedUuid).limit(1); 
       if (fetchError || !data || data.length === 0) throw new Error("Gagal mengambil data saldo.");
 
-      const rangerUuid = data[0].id;
       const currentBalance = data[0].balance || 0;
       const nominal = Number(amount);
       const newBalance = transactionType === 'charge' ? currentBalance - nominal : currentBalance + nominal;
@@ -93,14 +116,14 @@ export default function PosTerminal() {
       if (newBalance < 0) throw new Error("SALDO TIDAK MENCUKUPI!");
 
       // 1. UPDATE SALDO DI TABEL RANGERS
-      const { error: updateError } = await supabase.from('rangers').update({ balance: newBalance }).eq('id', rangerUuid);
+      const { error: updateError } = await supabase.from('rangers').update({ balance: newBalance }).eq('id', scannedUuid);
       if (updateError) throw new Error(`GAGAL UPDATE SALDO: ${updateError.message}`);
 
       // 2. INJEKSI LOG KE TABEL LEDGER
       const logAmount = transactionType === 'charge' ? -Math.abs(nominal) : Math.abs(nominal);
       const { error: logError } = await supabase.from('ledger').insert([{ 
-          to_id: rangerUuid, 
-          from_id: null, // Tetap NULL kecuali Dashboard butuh UUID spesifik agar muncul
+          to_id: scannedUuid, 
+          from_id: null, 
           amount: logAmount,
           description: 'Transaction Executed'
       }]);
@@ -108,11 +131,31 @@ export default function PosTerminal() {
       if (logError) console.error("LOG ERROR:", logError.message);
 
       setUiMessage({ type: 'success', text: `BERHASIL! SISA SALDO: KKC${newBalance.toLocaleString()}` });
-      setTimeout(() => { setScannedId(''); setScannedName(''); setAmount(''); setUiMessage({ type: '', text: '' }); }, 3000);
+      setTimeout(resetTargetState, 3000);
     } catch (err) {
       setUiMessage({ type: 'error', text: err.message });
       setTimeout(() => setUiMessage({ type: '', text: '' }), 5000);
     } finally { setIsProcessing(false); }
+  };
+
+  // WORKFLOW ELIMINASI RANGER
+  const handleDeleteTarget = async () => {
+    setIsProcessing(true);
+    setUiMessage({ type: 'loading', text: 'MENGHAPUS TARGET...' });
+
+    try {
+      const { error } = await supabase.from('rangers').delete().eq('id', scannedUuid);
+      if (error) throw new Error(`GAGAL HAPUS: Pastikan riwayat transaksi di Ledger kosong. (${error.message})`);
+
+      setUiMessage({ type: 'success', text: `TARGET [${scannedId}] BERHASIL DIHAPUS DARI SISTEM.` });
+      setTimeout(resetTargetState, 3000);
+    } catch (err) {
+      setUiMessage({ type: 'error', text: err.message });
+      setTimeout(() => setUiMessage({ type: '', text: '' }), 6000);
+    } finally {
+      setIsProcessing(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const handleLogout = () => {
@@ -167,14 +210,32 @@ export default function PosTerminal() {
                   <p className="font-mono text-cyan-500 font-bold text-xs mt-1 bg-cyan-500/10 px-2 py-0.5 rounded inline-block">{scannedId}</p>
                 </div>
               </div>
-              <button onClick={() => { setScannedId(''); setScannedName(''); }} className="text-slate-600 hover:text-rose-500 transition-all relative z-10"><XCircle size={28} /></button>
+              
+              <div className="flex gap-3 relative z-10">
+                <button onClick={() => setShowDeleteConfirm(true)} disabled={isProcessing} className="text-slate-600 hover:text-rose-500 transition-all disabled:opacity-30"><Trash2 size={24} /></button>
+                <button onClick={resetTargetState} disabled={isProcessing} className="text-slate-600 hover:text-cyan-500 transition-all disabled:opacity-30"><XCircle size={28} /></button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <button onClick={() => setTransactionType('charge')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'charge' ? 'bg-rose-500/10 border-rose-500 text-rose-500 shadow-lg shadow-rose-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowDownCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Charge</span></button>
-              <button onClick={() => setTransactionType('topup')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'topup' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowUpCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Top Up</span></button>
-            </div>
-            <div className="mb-6"><input type="number" placeholder="NOMINAL (KKC)..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-black/60 border border-slate-800 p-5 rounded-2xl text-center text-xl font-mono outline-none focus:border-cyan-500/50 text-white tracking-[0.2em] transition-all" /></div>
-            <button onClick={handleTransaction} disabled={!amount || isProcessing} className={`w-full p-6 rounded-2xl text-[11px] font-black uppercase tracking-[0.25em] transition-all ${transactionType === 'charge' ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20'} disabled:opacity-30 disabled:scale-100 active:scale-95`}>{isProcessing ? 'Transmitting Data...' : 'Confirm Transaction'}</button>
+
+            {/* PANEL KONFIRMASI ELIMINASI */}
+            {showDeleteConfirm ? (
+              <div className="bg-rose-500/10 border border-rose-500/30 p-5 rounded-2xl mb-6 animate-in fade-in slide-in-from-top-2 flex flex-col gap-4 shadow-[0_0_20px_rgba(225,29,72,0.1)]">
+                <p className="text-[10px] font-black text-rose-500 tracking-widest uppercase text-center">Konfirmasi: Hapus Ranger Ini?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDeleteConfirm(false)} disabled={isProcessing} className="flex-1 p-3 bg-black/40 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-400 hover:text-white transition-all disabled:opacity-30">BATAL</button>
+                  <button onClick={handleDeleteTarget} disabled={isProcessing} className="flex-1 p-3 bg-rose-600 hover:bg-rose-500 rounded-xl text-[10px] font-black text-white tracking-widest shadow-lg shadow-rose-600/20 transition-all disabled:opacity-30">EKSEKUSI</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <button onClick={() => setTransactionType('charge')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'charge' ? 'bg-rose-500/10 border-rose-500 text-rose-500 shadow-lg shadow-rose-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowDownCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Charge</span></button>
+                  <button onClick={() => setTransactionType('topup')} className={`p-5 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${transactionType === 'topup' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-black/40 border-slate-800 text-slate-500'}`}><ArrowUpCircle size={24} className="group-hover:-translate-y-1 transition-transform" /><span className="text-[10px] font-black tracking-widest uppercase">Top Up</span></button>
+                </div>
+                <div className="mb-6"><input type="number" placeholder="NOMINAL (KKC)..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-black/60 border border-slate-800 p-5 rounded-2xl text-center text-xl font-mono outline-none focus:border-cyan-500/50 text-white tracking-[0.2em] transition-all" /></div>
+                <button onClick={handleTransaction} disabled={!amount || isProcessing} className={`w-full p-6 rounded-2xl text-[11px] font-black uppercase tracking-[0.25em] transition-all ${transactionType === 'charge' ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20'} disabled:opacity-30 disabled:scale-100 active:scale-95`}>{isProcessing ? 'Transmitting Data...' : 'Confirm Transaction'}</button>
+              </>
+            )}
           </div>
         )}
       </div>
