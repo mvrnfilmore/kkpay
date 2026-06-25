@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export default function PosTerminal() {
   const [scannedId, setScannedId] = useState('');
   const [scannedName, setScannedName] = useState('');
-  const [scannedUuid, setScannedUuid] = useState(''); // STATE UUID UNTUK MASTERLOG & DELETE
+  const [scannedUuid, setScannedUuid] = useState(''); 
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState('charge'); 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -34,17 +34,12 @@ export default function PosTerminal() {
     if (!scannedId) {
       html5QrCode = new Html5Qrcode("tactical-scanner");
       
-      // KALIBRASI OPTIK UNTUK QR KECIL DI GELANG
+      // OPTIK DIKALIBRASI ULANG: Resolusi standar, tapi area scan diperkecil & dipercepat
       html5QrCode.start(
-        { 
-          facingMode: "environment",
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 }
-        },
+        { facingMode: "environment" },
         { 
           fps: 15, 
-          qrbox: { width: 150, height: 150 }, // Box dikecilin biar fokus ke tengah
-          aspectRatio: 1.0 
+          qrbox: { width: 150, height: 150 } 
         },
         (decodedText) => {
           if (html5QrCode.getState() === 2) { 
@@ -115,11 +110,9 @@ export default function PosTerminal() {
 
       if (newBalance < 0) throw new Error("SALDO TIDAK MENCUKUPI!");
 
-      // 1. UPDATE SALDO DI TABEL RANGERS
       const { error: updateError } = await supabase.from('rangers').update({ balance: newBalance }).eq('id', scannedUuid);
       if (updateError) throw new Error(`GAGAL UPDATE SALDO: ${updateError.message}`);
 
-      // 2. INJEKSI LOG KE TABEL LEDGER
       const logAmount = transactionType === 'charge' ? -Math.abs(nominal) : Math.abs(nominal);
       const { error: logError } = await supabase.from('ledger').insert([{ 
           to_id: scannedUuid, 
@@ -138,7 +131,6 @@ export default function PosTerminal() {
     } finally { setIsProcessing(false); }
   };
 
-  // WORKFLOW ELIMINASI RANGER
   const handleDeleteTarget = async () => {
     setIsProcessing(true);
     setUiMessage({ type: 'loading', text: 'MENGHAPUS TARGET...' });
